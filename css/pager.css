@@ -1,0 +1,34 @@
+ul.nav-page {
+margin: 15px auto;
+width: 600px;
+padding: 0;
+list-style: none;
+position: relative;
+}
+
+ul.nav-page li {
+padding: 0 3px;
+display: inline;
+}
+
+ul.nav-page li.cur a {
+		font-weight: bold;
+		font-size: 16px;
+}
+
+ul.nav-page li a {
+		font-size: 14px;
+color: #336699;
+}
+
+ul.nav-page li.prev {
+position: absolute;
+top: 0px;
+left: -70px;
+}
+
+ul.nav-page li.next {
+position: absolute;
+top: 0px;
+right: 0px;
+} 
