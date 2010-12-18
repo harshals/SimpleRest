@@ -1,99 +1,67 @@
-use strict;
-use warnings;
 package Library;
+use Dancer ':syntax';
+use lib "lib";
+use Schema;
+use Data::Dumper;
 
-use Moose;
-use MooseX::NonMoose;
-use Moose::Util::TypeConstraints;
+our $VERSION = '0.1';
 
-use Plack::Request;
-use DateTime;
+set serializer => 'JSON';
 
-use Plack::Middleware::Static;
-use Plack::Middleware::Session;
-use Plack::Session::Store::Cache;
-use CHI;
 
-extends 'WebNano';
-use Library::Schema;
-use WebNano::Renderer::TT;
+set 'db' => Schema->new()->init_schema("small.db");
+set apphandler => 'PSGI';
+#set logger => 'console';
 
-with 'MooseX::SimpleConfig';
-
-has '+configfile' => ( default => 'library.pl' );
-
-has 'name' => ( is => 'ro', isa => 'Str' );
-
-subtype 'Library::Schema::Connected' => as class_type( 'Library::Schema' );
-coerce 'Library::Schema::Connected'
-    => from 'HashRef' 
-        => via { Library::Schema->connect( @{ $_->{connect_info} } ) };
-
-has schema => ( is => 'ro', isa => 'Library::Schema::Connected', coerce => 1 );
-
-subtype 'Library::WebNano::Renderer::TT' => as class_type ( 'WebNano::Renderer::TT' );
-coerce 'Library::WebNano::Renderer::TT'
-    => from 'HashRef'
-        => via { WebNano::Renderer::TT->new( %$_ ) };
-
-has renderer => ( is => 'ro', isa => 'Library::WebNano::Renderer::TT', coerce => 1 );
-
-around handle => sub {
-    my $orig = shift;
-    my $self = shift;
-    my $env  = shift;
-    if( $env->{'psgix.session'}{user_id} ){
-        $env->{user} = $self->schema->resultset( 'User' )->find( $env->{'psgix.session'}{user_id} );
-    }
-    else{
-        my $req = Plack::Request->new( $env );
-        if( $req->param( 'username' ) && $req->param( 'password' ) ){
-            my $user = $self->schema->resultset( 'user' )->search( { username => $req->param( 'username' ) } )->first;
-            if( $user && $user->check_password( $req->param( 'password' ) ) ){
-                $env->{user} = $user;
-                $env->{'psgix.session'}{user_id} = $user->id;
-            }
-        }
-    }
-    $self->$orig( $env, @_ );
+get '/' => sub {
+    template 'index';
 };
 
-sub tags { shift->schema->resultset( 'Book' )->all }
+## index method, simply list 
 
-
-
-
-sub authors {
-   my ( $self ) = @_;
-
-   my @articles = $self->schema->resultset('Author')->all();
-
-   unless (@articles)
-   {
-      return "<p>No Articles in Archive!</p>";
-   }
-
-	return @articles;
-}
-
-
-
-sub pages {
-   return shift->schema->resultset('Page')->search( display_in_drawer => 1 )->all();
-}
-
-
-override psgi_callback => sub {
-    my $app = super;
-
-    $app = Plack::Middleware::Static->wrap( $app, path => qr{^/static/}, root => './templates/' );
-    $app = Plack::Middleware::Static->wrap( $app, path => qr{^/favicon.ico$}, root => './templates/static/images/' );
-    $app = Plack::Middleware::Session->wrap( $app, store => Plack::Session::Store::Cache->new(
-
-            cache => CHI->new(driver => 'FastMmap')
-        )
-    );
-    return $app;
+before sub {
+	my $schema = setting('db');
+	$schema->user(1);
+	debug "current path is " . request->path;
 };
 
-1;
+get '/api/:model' => sub {
+
+	my $schema = setting('db');
+    my $params = request->params;
+	
+	debug $schema->sources;
+
+	if (grep(/$params->{'model'}/, $schema->sources  )   ) {
+		
+		debug "coming here";
+		#my $rs = $schema->resultset( $params->{'model'} );
+		#my $list = $rs->recent->serialize;
+		#return { data => $list };
+	}else {
+		
+		debug "coming here too";
+		send_error("Model cannot be found");
+	}
+	
+};
+
+post '/api/:model' => sub {
+
+	my $schema = setting('db');
+    my $params = request->params;
+	
+	if (grep(/$params->{'model'}/, $schema->sources  )   ) {
+
+		my $rs = $schema->resultset( $params->{'model'} );
+		my $list = $rs->recent->serialize;
+		return { data => $list };
+	}else {
+		
+		send_error("Model cannot be found");
+	}
+	
+};
+
+true;
+
